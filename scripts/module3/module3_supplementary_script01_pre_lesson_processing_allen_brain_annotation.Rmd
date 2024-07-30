@@ -1,0 +1,155 @@
+### LABEL TRANSFER FROM ALLEN MOUSE BRAIN
+### TUTORIAL ADAPTED FROM 
+
+library(Seurat)
+library(SeuratDisk)
+library(SeuratObject)
+library(reticulate)
+#library(SCP)
+#library(schard)
+library(spacexr)
+library(Matrix)
+
+
+obj = schard::h5ad2seurat('/Users/mystique27m/Downloads/adata_wt.h5ad')
+obj <- NormalizeData(obj)
+obj <- FindVariableFeatures(obj)
+obj <- ScaleData(obj)
+obj <- RunPCA(obj)
+obj <- FindNeighbors(obj, dims = 1:21)
+obj <- FindClusters(obj)
+
+obj <- RunUMAP(obj, dims = 1:9)
+
+
+# allen.corted.ref can be downloaded here:
+# https://www.dropbox.com/s/cuowvm4vrf65pvq/allen_cortex.rds?dl=1
+allen.cortex.ref <- readRDS("/Users/mystique27m/Downloads/allen_cortex.rds")
+allen.cortex.ref <- UpdateSeuratObject(allen.cortex.ref)
+
+Idents(allen.cortex.ref) <- "subclass"
+# remove CR cells because there aren't enough of them for annotation
+allen.cortex.ref <- subset(allen.cortex.ref, subset = subclass != "CR")
+
+
+### start transfer leanring
+# pre-process dataset (without integration)
+allen.cortex.ref <- NormalizeData(allen.cortex.ref)
+
+allen.cortex.ref <- FindVariableFeatures(allen.cortex.ref)
+allen.cortex.ref <- ScaleData(allen.cortex.ref)
+allen.cortex.ref <- RunPCA(allen.cortex.ref)
+allen.cortex.ref <- FindNeighbors(allen.cortex.ref, dims = 1:21)
+allen.cortex.ref <- FindClusters(allen.cortex.ref)
+
+allen.cortex.ref <- RunUMAP(allen.cortex.ref, dims = 1:21)
+DimPlot(allen.cortex.ref)
+
+
+
+
+anchors <- FindTransferAnchors(reference = allen.cortex.ref, query = obj, dims = 1:21,
+                                        reference.reduction = "pca")
+predictions <- TransferData(anchorset = anchors, refdata = allen.cortex.ref$class, dims = 1:21)
+obj <- AddMetaData(obj, metadata = predictions)
+
+DimPlot(obj, group.by='predicted.id')
+
+
+subclass <- TransferData(anchorset = anchors, refdata = allen.cortex.ref$subclass, dims = 1:21)
+obj <- AddMetaData(obj, metadata = subclass)
+
+DimPlot(obj, group.by='predicted.id')
+
+saveRDS(allen.cortex.ref, file="/Users/mystique27m/Downloads/allen_obj.rds")
+saveRDS(obj, file="/Users/mystique27m/Downloads/obj_wt.rds")
+
+
+
+library(ggplot2)
+
+color <- c(
+"#ebac23",
+#1yellow
+
+"#b80058",
+#2lipstick
+
+"#008cf9",
+#3azure
+
+"#006e00",
+#4green
+
+"#00bbad",
+#5caribbean
+
+"#d163e6",
+#6lavender
+
+"#b24502",
+#7brown
+
+"#ff9287",
+#8coral
+
+"#5954d6",
+#9indigo
+
+"#00c6f8",
+#10turquoise
+
+"#878500",
+#11olive
+
+"#00a76c",
+#12jade
+
+"#bdbdbd",
+#13green
+
+"#005900",
+#14green
+
+"#000078",
+#15blue
+
+"#490d00",
+#16brown
+
+"#8a034f",
+#17pink
+
+"#005a8a",
+#18orient
+
+"#443500",
+#19cola
+
+"#274d52",
+#20plantation
+
+"#c7a2a6",
+#21eunry
+
+'#818b70',
+#battleship
+
+'#8c9fb7')
+#bali hai
+
+
+obj[[]]$predicted.id <- as.factor(obj[[]]$predicted.id)
+ggplot(obj[[]], aes(x=x_location, y=y_location, color=predicted.id)) + 
+  geom_point(size=0.01) + 
+  scale_color_manual(values=color)+ theme_linedraw()
+
+ggplot(obj[[]], aes(x=x_location, y=y_location, color=predicted.id)) + 
+  geom_point(size=0.001) + 
+  scale_color_manual(values=color) + 
+  theme_linedraw() + 
+  facet_wrap(~predicted.id, ncol=7)
+
+### save the metadata only
+write.csv(obj[[]], "/Users/mystique27m/Downloads/obj_wt.csv", row.names = T)
+
